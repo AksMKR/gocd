@@ -86,6 +86,39 @@ const Pipeline = function (info) {
   this.getInstanceCounters = () => {
     return _.map(this.instances, (instance) => instance.counter);
   };
+
+  this.getDisabledTooltipText = () => {
+    if (!self.canOperate) {
+      return TooltipText.NO_OPERATE_PERMISSION;
+    }
+    if (self.isPaused) {
+      return TooltipText.PIPELINE_PAUSED;
+    }
+    if (self.isLocked) {
+      return TooltipText.PIPELINE_LOCKED;
+    }
+    return self.isFirstStageInProgress() ? TooltipText.FIRST_STAGE_IN_PROGRESS : '';
+  };
+
+  this.getPauseDisabledTooltipText = () => {
+    return self.canPause ? '': TooltipText.NO_OPERATE_PERMISSION;
+  };
+
+  this.getSettingsDisabledTooltipText = () => {
+    if (self.isDefinedInConfigRepo()) {
+      return TooltipText.CONFIG_REPO_PIPELINE;
+    }
+    return TooltipText.NO_EDIT_PERMISSION;
+  };
+
+  const TooltipText = {
+    NO_OPERATE_PERMISSION: "No permission to operate pipeline.",
+    PIPELINE_PAUSED: "Pipeline is currently paused.",
+    PIPELINE_LOCKED: "Pipeline is currently locked.",
+    FIRST_STAGE_IN_PROGRESS: "First stage is still in progress.",
+    CONFIG_REPO_PIPELINE: "Config repo pipeline.",
+    NO_EDIT_PERMISSION: "No permission to edit pipeline.",
+  };
 };
 
 module.exports = Pipeline;

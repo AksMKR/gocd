@@ -18,14 +18,14 @@ describe("Dashboard", () => {
   const Pipeline = require('models/dashboard/pipeline');
   require('jasmine-jquery');
 
-  let pipelineJson;
+  let pipelineJson, defaultPauseInfo;
   beforeEach(() => {
-    const defaultPipelineJson = {
+    defaultPauseInfo = {
       "paused":       true,
       "paused_by":    "admin",
       "pause_reason": "under construction"
     };
-    pipelineJson              = pipelineJsonFor(defaultPipelineJson);
+    pipelineJson     = pipelineJsonFor(defaultPauseInfo);
   });
   describe('Pipeline Model', () => {
 
@@ -51,7 +51,7 @@ describe("Dashboard", () => {
       expect(pipeline.isLocked).toBe(false);
       expect(pipeline.canUnlock).toBe(true);
 
-      expect(pipeline.isDefinedInConfigRepo()).toBe(true);
+      expect(pipeline.isDefinedInConfigRepo()).toBe(false);
 
       expect(pipeline.trackingTool).toEqual({
         "regex": "#(\\d+)",
@@ -98,6 +98,56 @@ describe("Dashboard", () => {
       const instanceCounters = pipeline.getInstanceCounters();
       expect(instanceCounters.length).toEqual(1);
       expect(instanceCounters).toEqual([1]);
+    });
+
+    it("should return the trigger tooltip text when first stage is building", () => {
+      pipelineJson.pause_info.paused = false;
+      pipelineJson._embedded.instances[0]._embedded.stages[0].status = "Building";
+      const pipeline                                                 = new Pipeline(pipelineJson);
+      expect(pipeline.getDisabledTooltipText()).toEqual("First stage is still in progress.");
+    });
+
+    it("should return empty tooltip trigger text if the trigger button isn't disabled", () => {
+      pipelineJson.pause_info.paused = false;
+      const pipeline = new Pipeline(pipelineJson);
+      expect(pipeline.getDisabledTooltipText()).toEqual("");
+    });
+
+    it("should return pipeline paused trigger tooltip text when pipeline is paused", () => {
+      const pipeline = new Pipeline(pipelineJson);
+      expect(pipeline.getDisabledTooltipText()).toEqual("Pipeline is currently paused.");
+    });
+
+    it("should return pipeline locked trigger tooltip text when pipeline is locked", () => {
+      pipelineJson.locked = true;
+      pipelineJson.pause_info.paused = false;
+      const pipeline = new Pipeline(pipelineJson);
+      expect(pipeline.getDisabledTooltipText()).toEqual("Pipeline is currently locked.");
+    });
+
+    it("should return no permissions trigger tooltip text when user doesn't have permission to operate the pipeline", () => {
+      pipelineJson = pipelineJsonFor(defaultPauseInfo, false, false);
+
+      const pipeline = new Pipeline(pipelineJson);
+      expect(pipeline.getDisabledTooltipText()).toEqual("No permission to operate pipeline.");
+    });
+
+    it("should return no permissions pause tooltip text when user doesn't have permission to operate the pipeline", () => {
+      pipelineJson = pipelineJsonFor(defaultPauseInfo, false);
+      const pipeline = new Pipeline(pipelineJson);
+      expect(pipeline.getPauseDisabledTooltipText()).toEqual("No permission to operate pipeline.");
+    });
+
+    it("should return pipeline config repo tooltip text for config repo pipelines", () => {
+      pipelineJson   = pipelineJsonFor(defaultPauseInfo, true, true, true);
+      const pipeline = new Pipeline(pipelineJson);
+      expect(pipeline.getSettingsDisabledTooltipText()).toEqual("Config repo pipeline.");
+    });
+
+    it("should return no permission tooltip text as default", () => {
+      pipelineJson   = pipelineJsonFor(defaultPauseInfo, true, true, false);
+      const pipeline = new Pipeline(pipelineJson);
+      expect(pipeline.getSettingsDisabledTooltipText()).toEqual("No permission to edit pipeline.");
     });
   });
 
@@ -220,7 +270,7 @@ describe("Dashboard", () => {
     });
   });
 
-  const pipelineJsonFor = (pauseInfo) => {
+  const pipelineJsonFor = (pauseInfo, canPause = true, canOperate = true, fromConfigRepo = false) => {
     return {
       "_links":                 {
         "self":                 {
@@ -251,9 +301,9 @@ describe("Dashboard", () => {
       "can_unlock":             true,
       "pause_info":             pauseInfo,
       "can_administer":         true,
-      "can_operate":            true,
-      "can_pause":              true,
-      "from_config_repo":       true,
+      "can_operate":            canOperate,
+      "can_pause":              canPause,
+      "from_config_repo":       fromConfigRepo,
       "tracking_tool":          {
         "regex": "#(\\d+)",
         "link":  "http://example.com/${ID}/"

@@ -445,18 +445,59 @@ const f = {
 
   button: {
     view (vnode) {
-      return (
-        <button type="button"
-                class={compactClasses(vnode.attrs, 'button')}
-                {...vnode.attrs}>
+      const args        = vnode.attrs;
+      const tooltipText = deleteKeyAndReturnValue(args, "tooltipText");
+
+      if (!_.isEmpty(tooltipText)) {
+        return (<button type="button"
+                        class={compactClasses(args, 'button')}
+                        {...args}
+                        oncreate={(vnode) => {
+                          new window.Foundation.Tooltip($(vnode.dom), {tipText: tooltipText});
+                        }}
+                        onupdate={(vnode) => {
+                          $(vnode.dom).foundation('destroy');
+                          new window.Foundation.Tooltip($(vnode.dom), {tipText: tooltipText});
+                        }}
+                        onbeforeremove={(vnode) => {
+                          $(vnode.dom).foundation('destroy');
+                        }}
+                        data-hover-delay={100}>
           {vnode.children}
-        </button>
+        </button>);
+      }
+      return (
+          <button type="button"
+                  class={compactClasses(args, 'button')}
+                  {...args}>
+            {vnode.children}
+          </button>
       );
     }
   },
 
   link: {
     view (vnode) {
+      const tooltipText = vnode.attrs.tooltipText;
+
+      if (!_.isEmpty(tooltipText)) {
+        return (<a href="javascript:void(0)"
+                   class={compactClasses(vnode.attrs)} {...vnode.attrs}
+                   oncreate={(vnode) => {
+                     new window.Foundation.Tooltip($(vnode.dom), {tipText: tooltipText});
+                   }}
+                   onupdate={(vnode) => {
+                     $(vnode.dom).foundation('destroy');
+                     new window.Foundation.Tooltip($(vnode.dom), {tipText: tooltipText});
+                   }}
+                   onbeforeremove={(vnode) => {
+                     $(vnode.dom).foundation('destroy');
+                   }}
+                   data-hover-delay={100}>
+          {vnode.children}
+        </a>);
+      }
+
       if (vnode.attrs.target === '_blank') {
         if (s.isBlank(vnode.attrs.rel)) {
           vnode.attrs.rel = 'noopener noreferrer';
@@ -464,7 +505,9 @@ const f = {
           vnode.attrs.rel += " noopener noreferrer";
         }
       }
-      return (<a href="javascript:void(0)" class={compactClasses(vnode.attrs)} {...vnode.attrs}>{vnode.children}</a>);
+      return (<a href="javascript:void(0)"
+                 class={compactClasses(vnode.attrs)} {...vnode.attrs}>{vnode.children}
+      </a>);
     }
   },
 
