@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+const $                      = require('jquery');
 const m                      = require('mithril');
 const f                      = require('helpers/form_helper');
 const Stream                 = require('mithril/stream');
@@ -24,6 +25,9 @@ const ComponentMixins        = require('helpers/mithril_component_mixins');
 const PluginWidget           = require('views/plugins/plugin_widget');
 const PluginSettingModalBody = require('views/plugins/plugin_setting_modal_body');
 const PluginSetting          = require('models/plugins/plugin_setting');
+const PluginInfos            = require('models/shared/plugin_infos');
+const Spinner                = require('views/shared/spinner');
+const PageLoadError          = require('views/shared/page_load_error');
 
 require('jquery-textcomplete');
 
@@ -52,7 +56,20 @@ function showSuccess(modal, ctrl, message) {
 
 const PluginsWidget = {
   oninit (vnode) {
-    const ctrl = vnode.state;
+    const ctrl       = vnode.state;
+    ctrl.pluginInfos = Stream({});
+    ctrl.errorPage   = Stream(null);
+    ctrl.loading     = Stream(true);
+    const onSuccess  = (pluginInfos) => {
+      ctrl.pluginInfos(pluginInfos);
+      ctrl.errorPage(null);
+    };
+
+    const onFailure = (response) => {
+      ctrl.errorPage(<PageLoadError message={response}/>);
+    };
+    $.when(PluginInfos.all(null, {'include_bad': true})).then(onSuccess, onFailure).always(() => ctrl.loading(false));
+
     ComponentMixins.ManagesCollection.call(this, {as: 'PluginInfo'});
     ComponentMixins.HasViewModel.call(this);
 
@@ -63,18 +80,18 @@ const PluginsWidget = {
     };
 
     this.createModal = function (options) {
-      const newPluginSetting   = options.newPluginSetting;
-      const pluginInfo   = options.pluginInfo;
-      const modalTitle   = options.modalTitle;
-      const errorMessage = options.errorMessage;
-      const callback     = options.callback || _.noop;
+      const newPluginSetting = options.newPluginSetting;
+      const pluginInfo       = options.pluginInfo;
+      const modalTitle       = options.modalTitle;
+      const errorMessage     = options.errorMessage;
+      const callback         = options.callback || _.noop;
 
       const modal = new Modal({
         size:    'large',
         title:   modalTitle,
         body:    () => (<PluginSettingModalBody newPluginSetting={newPluginSetting}
-                                                 pluginInfo={pluginInfo}
-                                                 errorMessage={errorMessage}/>),
+                                                pluginInfo={pluginInfo}
+                                                errorMessage={errorMessage}/>),
         onclose: () => modal.destroy(),
         buttons: [
           {
@@ -88,8 +105,8 @@ const PluginsWidget = {
     };
 
     this.edit = function (pluginInfo) {
-      const newPluginSetting   = Stream();
-      const errorMessage = Stream();
+      const newPluginSetting = Stream();
+      const errorMessage     = Stream();
       ctrl.clearMessage();
 
       const modal = this.createModal({
@@ -122,8 +139,14 @@ const PluginsWidget = {
   },
 
   view (vnode) {
+    if (vnode.state.loading()) {
+      return <Spinner/>;
+    }
+    if (vnode.state.errorPage()) {
+      return vnode.state.errorPage();
+    }
 
-    const noPluginsInstalled = (!vnode.attrs.pluginInfos || vnode.attrs.pluginInfos().countPluginInfo() === 0);
+    const noPluginsInstalled = (!vnode.state.pluginInfos || vnode.state.pluginInfos().countPluginInfo() === 0);
 
     let noPluginsMessage;
     if (noPluginsInstalled) {
@@ -142,7 +165,7 @@ const PluginsWidget = {
 
           <f.row>
 
-            {vnode.attrs.pluginInfos().sortByPluginInfos((pi) => pi.id()).map((pluginInfo) => {
+            {vnode.state.pluginInfos().sortByPluginInfos((pi) => pi.id()).map((pluginInfo) => {
               return (
                 <PluginWidget
                   pluginInfo={pluginInfo}
@@ -158,6 +181,6 @@ const PluginsWidget = {
       </div>
     );
   }
-};
+}
 
 module.exports = PluginsWidget;

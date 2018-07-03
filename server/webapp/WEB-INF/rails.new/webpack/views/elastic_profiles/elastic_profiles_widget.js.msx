@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 
+const $                       = require('jquery');
 const m                       = require('mithril');
 const f                       = require('helpers/form_helper');
 const ElasticProfileWidget    = require('views/elastic_profiles/elastic_profile_widget');
@@ -25,6 +26,9 @@ const Modal                   = require('views/shared/new_modal');
 const ComponentMixins         = require('helpers/mithril_component_mixins');
 const ElasticProfiles         = require('models/elastic_profiles/elastic_profiles');
 const PluginGroupHeader       = require('views/shared/plugin_config/plugin_group_header');
+const PageLoadError           = require('views/shared/page_load_error');
+const PluginInfos             = require('models/shared/plugin_infos');
+const Spinner                 = require('views/shared/spinner');
 
 require('jquery-textcomplete');
 
@@ -54,6 +58,21 @@ function showSuccess(modal, ctrl, message) {
 const ElasticProfilesWidget = {
   oninit(vnode) {
     const ctrl = vnode.state;
+    ctrl.pluginInfos = Stream({});
+    ctrl.errorPage   = Stream(null);
+    ctrl.loading     = Stream(true);
+
+    const onSuccess = (pluginInfos) => {
+      ctrl.pluginInfos(pluginInfos);
+      ctrl.errorPage(null);
+    };
+
+    const onFailure = (response) => {
+      ctrl.errorPage(<PageLoadError message={response}/>);
+    };
+
+    $.when(PluginInfos.all(null, {type: 'elastic-agent'})).then(onSuccess, onFailure).always(() => ctrl.loading(false));
+
     ComponentMixins.ManagesCollection.call(this, {as: 'Profile'});
     ComponentMixins.HasViewModel.call(this);
 
@@ -85,7 +104,7 @@ const ElasticProfilesWidget = {
         size:    'large',
         title:   modalTitle,
         body:    () => (<ElasticProfileModalBody profile={newProfile}
-                                                 pluginInfos={vnode.attrs.pluginInfos}
+                                                 pluginInfos={ctrl.pluginInfos}
                                                  pluginInfo={pluginInfo}
                                                  errorMessage={errorMessage}/>),
         onclose: () => modal.destroy(),
@@ -102,7 +121,7 @@ const ElasticProfilesWidget = {
 
     this.edit = function (profile) {
       const newProfile   = Stream();
-      const pluginInfo   = Stream(vnode.attrs.pluginInfos().findById(profile.pluginId()));
+      const pluginInfo   = Stream(ctrl.pluginInfos().findById(profile.pluginId()));
       const errorMessage = Stream();
       ctrl.clearMessage();
 
@@ -144,7 +163,7 @@ const ElasticProfilesWidget = {
 
     this.clone = (profile) => {
       const newProfile   = Stream();
-      const pluginInfo   = Stream(vnode.attrs.pluginInfos().findById(profile.pluginId()));
+      const pluginInfo   = Stream(ctrl.pluginInfos().findById(profile.pluginId()));
       const errorMessage = Stream();
       ctrl.clearMessage();
 
@@ -212,9 +231,16 @@ const ElasticProfilesWidget = {
     };
   },
 
-  view: (vnode) => {
+  view(vnode) {
 
-    const noElasticAgentPluginInstalled = (!vnode.attrs.pluginInfos || vnode.attrs.pluginInfos().countPluginInfo() === 0);
+    if (vnode.state.loading()) {
+      return <Spinner/>;
+    }
+    if (vnode.state.errorPage()) {
+      return vnode.state.errorPage();
+    }
+
+    const noElasticAgentPluginInstalled = (!vnode.state.pluginInfos || vnode.state.pluginInfos().countPluginInfo() === 0);
 
     let noElasticAgentPluginMessage;
     if (noElasticAgentPluginInstalled) {
@@ -238,7 +264,7 @@ const ElasticProfilesWidget = {
           <f.row>
 
             {_.map(vnode.state.profiles().groupByProfileProperty('pluginId'), (profiles, pluginId) => {
-              const pluginInfo = vnode.attrs.pluginInfos().findById(pluginId);
+              const pluginInfo = vnode.state.pluginInfos().findById(pluginId);
               let statusReportButton;
 
               if (pluginInfo) {
@@ -274,6 +300,6 @@ const ElasticProfilesWidget = {
       </div>
     );
   }
-};
+}
 
 module.exports = ElasticProfilesWidget;

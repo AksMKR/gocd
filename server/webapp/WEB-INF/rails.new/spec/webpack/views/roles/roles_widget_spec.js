@@ -20,15 +20,12 @@ describe("RolesWidget", () => {
 
   const $             = require("jquery");
   const m             = require("mithril");
-  const Stream        = require("mithril/stream");
   const simulateEvent = require('simulate-event');
 
   require('jasmine-jquery');
   require('jasmine-ajax');
 
   const RolesWidget = require("views/roles/roles_widget");
-  const PluginInfos = require('models/shared/plugin_infos');
-  const AuthConfigs = require('models/auth_configs/auth_configs');
   const Modal       = require('views/shared/new_modal');
 
   let $root, root;
@@ -79,14 +76,14 @@ describe("RolesWidget", () => {
   };
 
   const ldapPluginInfoJSON = {
-    "id":             "cd.go.authorization.ldap",
-    "status": {
+    "id":         "cd.go.authorization.ldap",
+    "status":     {
       "state": "active"
     },
-    "about":          {"name": "Ldap authorization plugin"},
+    "about":      {"name": "Ldap authorization plugin"},
     "extensions": [
       {
-        "type": "authorization",
+        "type":          "authorization",
         "role_settings": {
           "configurations": [],
           "view":           {
@@ -101,14 +98,14 @@ describe("RolesWidget", () => {
   };
 
   const githubPluginInfoJSON = {
-    "id":             "cd.go.authorization.github",
-    "status": {
+    "id":         "cd.go.authorization.github",
+    "status":     {
       "state": "active"
     },
-    "about":          {"name": "GitHub authorization plugin"},
+    "about":      {"name": "GitHub authorization plugin"},
     "extensions": [
       {
-        "type": "authorization",
+        "type":          "authorization",
         "role_settings": {
           "configurations": [],
           "view":           {
@@ -122,7 +119,11 @@ describe("RolesWidget", () => {
     ]
   };
 
-  const allPluginInfosJSON = [ldapPluginInfoJSON, githubPluginInfoJSON];
+  const allPluginInfosJSON = {
+    "_embedded": {
+      "plugin_info": [ldapPluginInfoJSON, githubPluginInfoJSON]
+    }
+  };
 
   const firstValidAuthConfigJSON = {
     "id":         "ldap",
@@ -136,10 +137,10 @@ describe("RolesWidget", () => {
     "properties": []
   };
 
-  const authConfigJSONWithoutPlugin = {
-    "id":         "auth-config-without-plugin",
-    "plugin_id":  "cd.go.authorization.foo-plugin",
-    "properties": []
+  const authConfigJSON = {
+    "_embedded": {
+      "auth_configs": [firstValidAuthConfigJSON, secondValidAuthConfigJSON]
+    }
   };
 
   const textElements = (selector) => {
@@ -148,46 +149,86 @@ describe("RolesWidget", () => {
     }), $.text);
   };
 
-  const allAuthConfigJSON = [firstValidAuthConfigJSON, authConfigJSONWithoutPlugin];
+  const pluginInfosUrl = '/go/api/admin/plugin_info?type=authorization';
+  const authConfigUrl  = '/go/api/admin/security/auth_configs';
 
-  const allPluginInfos               = Stream(PluginInfos.fromJSON([]));
-  const allAuthConfigs               = Stream(AuthConfigs.fromJSON({}));
-  const authConfigsOfInstalledPlugin = Stream(AuthConfigs.fromJSON({}));
-
-  beforeEach(() => {
-    jasmine.Ajax.install();
+  function mount(pluginApiResponse, authConfigApiResponse) {
+    jasmine.Ajax.stubRequest(pluginInfosUrl, undefined, 'GET').andReturn({
+      responseText:    JSON.stringify(pluginApiResponse),
+      status:          200,
+      responseHeaders: {
+        'Content-Type': 'application/json'
+      }
+    });
+    jasmine.Ajax.stubRequest(authConfigUrl, undefined, 'GET').andReturn({
+      responseText:    JSON.stringify(authConfigApiResponse),
+      status:          200,
+      responseHeaders: {
+        'Content-Type': 'application/json'
+      }
+    });
     jasmine.Ajax.stubRequest(roleIndexUrl, undefined, 'GET').andReturn({
       responseText: JSON.stringify(allRolesJSON),
       status:       200
     });
 
-    allPluginInfos(PluginInfos.fromJSON(allPluginInfosJSON));
-    allAuthConfigs(AuthConfigs.fromJSON(allAuthConfigJSON));
-    authConfigsOfInstalledPlugin(AuthConfigs.fromJSON([firstValidAuthConfigJSON, secondValidAuthConfigJSON]));
-
-    m.mount(root, RolesWidget({
-      pluginInfos: allPluginInfos,
-      allAuthConfigs,
-      authConfigsOfInstalledPlugin
-    }));
-
+    m.mount(root, RolesWidget);
     m.redraw(true);
+  }
+
+  function unmount() {
+    m.mount(root, null);
+    m.redraw();
+  }
+
+  beforeEach(() => {
+    jasmine.Ajax.install();
+    mount(allPluginInfosJSON, authConfigJSON);
   });
 
   afterEach(() => {
     jasmine.Ajax.uninstall();
-
-    m.mount(root, null);
-    m.redraw();
-
+    unmount();
     expect($('.new-modal-container .reveal')).not.toExist('Did you forget to close the modal before the test?');
+  });
+
+  describe('Loading Data', () => {
+
+    it('should show spinner while data is loading', () => {
+      unmount();
+      jasmine.Ajax.stubRequest(pluginInfosUrl, undefined, 'GET');
+      jasmine.Ajax.stubRequest(authConfigUrl, undefined, 'GET');
+
+      m.mount(root, RolesWidget);
+
+      expect($(".page-spinner")).toBeInDOM();
+    });
+
+    it('should show error on failure', () => {
+      unmount();
+      jasmine.Ajax.stubRequest(pluginInfosUrl, undefined, 'GET').andReturn({
+        responseText: '',
+        status:       503
+      });
+      jasmine.Ajax.stubRequest(authConfigUrl, undefined, 'GET').andReturn({
+        responseText: '',
+        status:       503
+      });
+
+      m.mount(root, RolesWidget);
+
+      expect($(".alert")).toBeInDOM();
+    });
+
+    it('should show data after response is received', () => {
+      expect($(".header-panel")).toBeInDOM();
+    });
   });
 
   describe("no authorization plugin loaded", () => {
     beforeEach(() => {
-      allPluginInfos(PluginInfos.fromJSON([]));
-      authConfigsOfInstalledPlugin(AuthConfigs.fromJSON([]));
-      m.redraw(true);
+      unmount();
+      mount({}, {});
     });
     afterEach(Modal.destroyAll);
 
@@ -226,8 +267,8 @@ describe("RolesWidget", () => {
 
   describe("no authorization configuration", () => {
     beforeEach(() => {
-      authConfigsOfInstalledPlugin(AuthConfigs.fromJSON([]));
-      m.redraw(true);
+      unmount();
+      mount(allPluginInfosJSON, {});
     });
 
     afterEach(Modal.destroyAll);
@@ -265,18 +306,27 @@ describe("RolesWidget", () => {
     });
 
     it("should render error if index call fails", () => {
+      unmount();
+      jasmine.Ajax.stubRequest(pluginInfosUrl, undefined, 'GET').andReturn({
+        responseText:    JSON.stringify(allPluginInfosJSON),
+        status:          200,
+        responseHeaders: {
+          'Content-Type': 'application/json'
+        }
+      });
+      jasmine.Ajax.stubRequest(authConfigUrl, undefined, 'GET').andReturn({
+        responseText:    JSON.stringify(authConfigJSON),
+        status:          200,
+        responseHeaders: {
+          'Content-Type': 'application/json'
+        }
+      });
       jasmine.Ajax.stubRequest(roleIndexUrl).andReturn({
         responseText: JSON.stringify({message: 'Boom!'}),
         status:       400
       });
-
-      m.mount(root, RolesWidget({
-        pluginInfos: allPluginInfos,
-        allAuthConfigs,
-        authConfigsOfInstalledPlugin
-      }));
-      m.redraw();
-
+      m.mount(root, RolesWidget);
+      m.redraw(true);
       expect($root.find('.alert.callout')).toContainText('Boom!');
     });
   });

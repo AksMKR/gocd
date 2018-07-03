@@ -14,17 +14,23 @@
  * limitations under the License.
  */
 
-const m                 = require('mithril');
-const Stream            = require('mithril/stream');
-const _                 = require('lodash');
-const f                 = require('helpers/form_helper');
-const Modal             = require('views/shared/new_modal');
-const HeaderPanel       = require('views/shared/header_panel');
-const ComponentMixins   = require('helpers/mithril_component_mixins');
-const Roles             = require('models/roles/roles');
-const GoCDRoleWidget    = require('views/roles/gocd_role_widget');
-const PluginRoleWidget  = require('views/roles/plugin_role_widget');
-const RoleWidget        = require('views/roles/role_widget');
+const $                = require('jquery');
+const m                = require('mithril');
+const Stream           = require('mithril/stream');
+const _                = require('lodash');
+const f                = require('helpers/form_helper');
+const Modal            = require('views/shared/new_modal');
+const HeaderPanel      = require('views/shared/header_panel');
+const ComponentMixins  = require('helpers/mithril_component_mixins');
+const Roles            = require('models/roles/roles');
+const GoCDRoleWidget   = require('views/roles/gocd_role_widget');
+const PluginRoleWidget = require('views/roles/plugin_role_widget');
+const RoleWidget       = require('views/roles/role_widget');
+const PluginInfos      = require('models/shared/plugin_infos');
+const AuthConfigs      = require('models/auth_configs/auth_configs');
+const Spinner          = require('views/shared/spinner');
+const PageLoadError    = require('views/shared/page_load_error');
+
 require('jquery-textcomplete');
 
 function showErrors(modal, ctrl, newRole) {
@@ -50,13 +56,32 @@ function showSuccess(modal, ctrl, message) {
   };
 }
 
-const RolesWidget = function (options) {
+const RolesWidget = () => {
   return {
     oninit (vnode) {
       const ctrl                        = vnode.state;
-      ctrl.allAuthConfigs               = options.allAuthConfigs;
-      ctrl.pluginInfos                  = options.pluginInfos;
-      ctrl.authConfigsOfInstalledPlugin = options.authConfigsOfInstalledPlugin;
+      ctrl.allAuthConfigs               = Stream({});
+      ctrl.pluginInfos                  = Stream([]);
+      ctrl.authConfigsOfInstalledPlugin = Stream({});
+      ctrl.loading                      = Stream(true);
+      ctrl.errorPage                    = Stream(null);
+
+      const onSuccess = (pluginInfoResponse, authConfigResponse) => {
+        ctrl.pluginInfos(new PluginInfos(pluginInfoResponse.filterPluginInfo((pi) => pi.extensions().authorization.capabilities().canAuthorize())));
+        ctrl.authConfigsOfInstalledPlugin(new AuthConfigs(authConfigResponse.filterAuthConfig((ac) => pluginInfoResponse.findById(ac.pluginId()) !== undefined)));
+        ctrl.allAuthConfigs(authConfigResponse);
+        ctrl.errorPage(null);
+      };
+
+      const onFailure = (response) => {
+        ctrl.errorPage(<PageLoadError message={response}/>);
+      };
+
+      $.when(PluginInfos.all(null, {type: 'authorization'}), AuthConfigs.all())
+        .then(onSuccess, onFailure)
+        .always(() => {
+          ctrl.loading(false);
+        });
 
       ComponentMixins.ManagesCollection.call(this, {as: 'Role'});
       ComponentMixins.HasViewModel.call(this);
@@ -215,6 +240,13 @@ const RolesWidget = function (options) {
     },
 
     view (vnode) {
+      if (vnode.state.loading()) {
+        return <Spinner/>;
+      }
+
+      if (vnode.state.errorPage()) {
+        return vnode.state.errorPage();
+      }
 
       const noPluginThatSupportsAuthorization = vnode.state.pluginInfos().countPluginInfo() === 0;
 
